@@ -1,13 +1,12 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import './App.css'
 import { MapContainer, TileLayer, Marker, Popup, CircleMarker } from "react-leaflet";
 import { GeoJSON } from 'react-leaflet/GeoJSON'
 import coTrackLineData from './data/CO/tracks.json'
 import coWaypointsData from './data/CO/waypoints.json'
 
-const showPopUp = (feature: { properties: { name: any; }; }, layer: { bindPopup: (arg0: any) => void; on: (arg0: any) => void;}) => {
+const selectMapFeature = (feature: { properties: { name: any; }; }, layer: { bindPopup: (arg0: any) => void; on: (arg0: any) => void;}) => {
   layer.bindPopup(feature.properties.name);
-
   layer.on({
     click: (event: { target: { setStyle: (arg0: { color: string; }) => void; }; }) => {
       event.target.setStyle({
@@ -18,17 +17,34 @@ const showPopUp = (feature: { properties: { name: any; }; }, layer: { bindPopup:
 }
 
 function App() {
-  const [userLocation, setUserLocation] = useState([0,0])
-  const [locationAccuracy, setLocationAccuracy] = useState(0)
-  const [userLocationFound, setUserLocationFound] = useState(false)
   
-  const geoloc_success = (pos: { coords: { latitude: any; longitude: any; accuracy: any; }; }) => {
-    setUserLocation([pos.coords.latitude, pos.coords.longitude])
-    setLocationAccuracy(pos.coords.accuracy);
-    setUserLocationFound(true)
+  interface UserLocationState {
+    loaded: boolean,
+    coordinates: {lat: number|null, lng: number|null},
+    accuracy: number|null,
+    heading: number|null,
+    speed: number|null
   }
   
-  const geoloc_error = (err: { code: number; }) => {
+  const [location, setLocation] = useState<UserLocationState>({
+    loaded: false,
+    coordinates: {lat: null, lng: null},
+    accuracy: null,
+    heading: null,
+    speed: null
+  })
+  
+  const on_success = (pos: { coords: { latitude: number|null; longitude: number|null; accuracy: number|null; heading: number|null; speed: number|null }; }) => {
+    setLocation({
+      loaded: true,
+      coordinates: {lat: pos.coords.latitude, lng: pos.coords.longitude},
+      accuracy: pos.coords.accuracy,
+      heading: pos.coords.heading,
+      speed: pos.coords.speed
+    })
+  }
+  
+  const on_error = (err: { code: number; }) => {
     if (err.code == 1){
       alert('Please allow geolocation access.')
     } else {
@@ -36,8 +52,11 @@ function App() {
     }
   }
   
-  navigator.geolocation.watchPosition(geoloc_success, geoloc_error);
-
+  useEffect(() => {
+    let id = navigator.geolocation.watchPosition(on_success, on_error);
+    console.log(`geolocation handler id: ${id}`);
+  }, [location])
+  
   return (
     <MapContainer
       center={[39.7392, -104.9903]}
@@ -49,17 +68,16 @@ function App() {
         attribution='&copy; <a href="http://osm.org/copyright">OpenStreetMap</a> contributors'
         url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
       />
-      {userLocationFound && <Marker position={userLocation}>
+      {location.loaded && <Marker position={location.coordinates}>
         <Popup>
           You are here.
         </Popup>
       </Marker>}
-      {userLocationFound && 
-        <CircleMarker center={userLocation} radius={locationAccuracy}/>
+      {location.loaded && 
+        <CircleMarker center={location.coordinates} radius={location.accuracy}/>
       }
-
-      <GeoJSON data={coTrackLineData.features} onEachFeature={showPopUp}/>
-      <GeoJSON data={coWaypointsData.features} onEachFeature={showPopUp}/>
+      <GeoJSON data={coTrackLineData.features} onEachFeature={selectMapFeature}/>
+      <GeoJSON data={coWaypointsData.features} onEachFeature={selectMapFeature}/>
     </MapContainer>
   ) 
 }
